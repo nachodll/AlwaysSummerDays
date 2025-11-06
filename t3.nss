@@ -1,11 +1,44 @@
 #include "NW_I0_GENERIC"
 #include "our_constants"
 
+
 void T3_DetermineCombatRound( object oIntruder = OBJECT_INVALID, int nAI_Difficulty = 10 )
 {
     DetermineCombatRound( oIntruder, nAI_Difficulty );
 }
 
+object T3_FindNearestAlly()
+{
+    object oNearest = GetNearestCreature(CREATURE_TYPE_REPUTATION, REPUTATION_TYPE_FRIEND, OBJECT_SELF, 1);
+    if (oNearest == OBJECT_SELF)
+    {
+        oNearest = GetNearestCreature(CREATURE_TYPE_REPUTATION, REPUTATION_TYPE_FRIEND, OBJECT_SELF, 2);
+    }
+    return oNearest;
+}
+
+int T3_WizardStrategy()
+{
+    if (!IsWizard())
+    {
+        return FALSE;
+    }
+
+    // find nearest ally
+    object oNearestAlly = T3_FindNearestAlly();
+
+    //if the ally is in the combat
+    if (GetIsObjectValid(oNearestAlly) && GetIsInCombat(oNearestAlly))
+    {
+        // help!!
+        ActionMoveToObject(oNearestAlly, TRUE);
+        SpeakString( "I GOT YOUR BACK SOLDIER!!! " + GetName(oNearestAlly), TALKVOLUME_SHOUT );
+
+        return TRUE;
+    }
+
+    return FALSE;
+}
 // Called every heartbeat (i.e., every six seconds).
 void T3_HeartBeat()
 {
@@ -13,7 +46,9 @@ void T3_HeartBeat()
     if (GetIsInCombat())
     {
         SpeakString( "I AM IN COMBAT, AAAAAAAAAAAAAAAAAA", TALKVOLUME_SHOUT );
+        T3_WizardStrategy();
         return;
+
     }
 
     string sTarget = GetLocalString( OBJECT_SELF, "TARGET" );
@@ -28,6 +63,7 @@ void T3_HeartBeat()
     if (fToTarget > 0.5)
         ActionMoveToLocation( GetLocation( oTarget ), TRUE );
 
+
     return;
 }
 
@@ -41,17 +77,17 @@ void T3_Spawn()
     {
      sTarget = WpFurthestAltarRight();
      SpeakString( "Target: "+ sTarget , TALKVOLUME_SHOUT );
-    }
+    }   /*
     else if (IsWizardLeft())
     {
      sTarget = WpClosestAltarLeft();
      SpeakString( "Target: "+ sTarget , TALKVOLUME_SHOUT );
     }
-    else if (IsWizardRight())
+   else if (IsWizardRight())
     {
      sTarget = WpClosestAltarRight();
      SpeakString( "Target: "+ sTarget , TALKVOLUME_SHOUT );
-    }
+    } */
     else if (IsFighterLeft())
     {
      sTarget = WpFurthestAltarRight();
@@ -64,7 +100,7 @@ void T3_Spawn()
     }
     else if (IsClericLeft())
     {
-     sTarget = WpFurthestAltarRight();
+     sTarget = TagMaster();
      SpeakString( "Target: "+ sTarget , TALKVOLUME_SHOUT );
     }
     else if (IsClericRight())
@@ -100,9 +136,46 @@ void T3_UserDefined( int Event )
             T3_HeartBeat();
             break;
 
-        // Whenever the NPC perceives a new creature.
+
+// Whenever the NPC perceives a new creature.
         case EVENT_PERCEIVE:
+        {
+            // Get the creature that triggered this event
+            object oPerceived = GetLastPerceived();
+
+            // Check if the perceived creature is an enemy
+            if (GetIsEnemy(oPerceived))
+            {
+                // Check if the enemy is within 3.0 meters
+                if (GetDistanceToObject(oPerceived) < 3.0)
+                {
+
+                    // Stop current movement and attack the close-range enemy
+                    ClearAllActions();
+                    ActionAttack(oPerceived);
+                }
+                else
+                {
+                    // --- Keep running towards target ---
+                    // The enemy is far away, so ignore them and
+                    // resume moving to the main target waypoint.
+                    string sTarget = GetLocalString(OBJECT_SELF, "TARGET");
+                    if (sTarget != "") // Only resume if we have a valid target
+                    {
+                        object oTarget = GetObjectByTag(sTarget);
+                        if (GetIsObjectValid(oTarget))
+                        {
+                            // Re-issue the move command because this event
+                            // interrupted the previous action.
+                            ActionMoveToLocation(GetLocation(oTarget), TRUE);
+                        }
+                    }
+                }
+            }
             break;
+        }
+
+
 
         // When a spell is cast at the NPC.
         case EVENT_SPELL_CAST_AT:

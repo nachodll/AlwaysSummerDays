@@ -54,6 +54,98 @@ object T3_GetEnemyByIndex(int iIndex)
     return GetLocalObject(oPortal, "ENEMY_" + IntToString(iIndex));
 }
 
+// Find the closest free altar
+string T3_FindFreeAltar()
+{
+    float fBest = 9999.0;
+    string sBest = "";
+
+    int i;
+    for (i = 0; i < 4; i++)
+    {
+        string sAltar;
+        if (i==0){
+            sAltar = ALTAR_RED_1;
+        }
+        else if (i==1){
+            sAltar = ALTAR_RED_2;
+        }
+        else if (i==2){
+            sAltar = ALTAR_BLUE_1;
+        }
+        else if (i==3){
+            sAltar = ALTAR_BLUE_2;
+        }
+
+        if (ClaimerOf(sAltar) == MyColor()){
+            continue;
+        }
+        object oAltar = GetObjectByTag(sAltar);
+        if (!GetIsObjectValid(oAltar))
+            continue;
+
+        float fDist = GetDistanceBetween(OBJECT_SELF, oAltar);
+        if (fDist < fBest)
+        {
+            fBest = fDist;
+            sBest = sAltar;
+        }
+    }
+    return sBest;
+}
+
+// Master updates strike target on the brazier
+void T3_MasterUpdateStrikeTarget()
+{
+    if (!IsMaster())
+        return;
+
+    object oBrazier = GetObjectByTag("BRAZIER");
+    if (!GetIsObjectValid(oBrazier))
+        return;
+
+    string sStrike = T3_FindFreeAltar();
+    if (sStrike != "")
+    {
+        SetLocalString(oBrazier, "STRIKE_TARGET", sStrike);
+        T3_DeclareAction("Strike target set to " + sStrike);
+    }
+}
+
+void T3_JoinStrikeAttack()
+{
+    // Wizards never join the strike attack
+    if (IsWizardLeft() || IsWizardRight())
+        return;
+
+    object oBrazier = GetObjectByTag("BRAZIER");
+    if (!GetIsObjectValid(oBrazier))
+        return;
+
+    string sStrike = GetLocalString(oBrazier, "STRIKE_TARGET");
+    if (sStrike == "")
+        return;
+
+    object oStrikeTarget = GetObjectByTag(sStrike);
+    if (!GetIsObjectValid(oStrikeTarget))
+        return;
+
+    // Hunting roles will always prioritize the hunt
+    string sHunt = GetLocalString(oBrazier, "HUNT_TAG");
+    if (IsMaster() || IsFighterLeft() || IsClericLeft())
+    {
+        if (sHunt != "")
+            return;
+    }
+
+    string sCurrent = GetLocalString(OBJECT_SELF, "TARGET");
+    if (sCurrent != sStrike)
+    {
+        SetLocalString(OBJECT_SELF, "TARGET", sStrike);
+        T3_DeclareAction("Joining STRIKE on " + sStrike);
+    }
+}
+
 
 
 // ---------------------------- Hunt the lone functions -------------------------------
@@ -171,11 +263,12 @@ void T3_MasterUpdateHuntTarget()
     else
     {
         DeleteLocalString(oBrazier, "HUNT_TAG");
+
     }
 }
 
 
-// Chosen hunters (M, WL adn CL)read HUNT_TAG from brazier and join the hunt if valid.
+// Chosen hunters (M, FL adn CL)read HUNT_TAG from brazier and join the hunt if valid.
 void T3_JoinHuntIfAvailable()
 {
     object oBrazier = GetObjectByTag( "BRAZIER" );
@@ -191,7 +284,7 @@ void T3_JoinHuntIfAvailable()
         return;
 
     // Only these three roles participate in the 3v1 hunt.
-    if (!(IsMaster() || IsClericLeft() || IsWizardLeft()))
+    if (!(IsMaster() || IsClericLeft() || IsFighterLeft()))
         return;
 
     // Set our local target to the hunt target if not already set.
@@ -215,11 +308,9 @@ void T3_DetermineCombatRound( object oIntruder = OBJECT_INVALID, int nAI_Difficu
 // Called every heartbeat (i.e., every six seconds).
 void T3_HeartBeat()
 {
-    // Always keep enemy object references fresh, also during combat
     T3_UpdateEnemyObjects();
-
-    // Master periodically selects an isolated enemy to hunt
-    T3_MasterUpdateHuntTarget();
+    T3_MasterUpdateHuntTarget();       // hunt the lone (priority)
+    T3_MasterUpdateStrikeTarget();     // strike target
 
     if (GetIsInCombat())
     {
@@ -229,6 +320,8 @@ void T3_HeartBeat()
 
     // Master and designated hunters adopt the hunt target if any.
     T3_JoinHuntIfAvailable();
+    // Master and strike team adop the strike target
+    T3_JoinStrikeAttack();
 
     // Keep moving towards the target
     string sTarget = GetLocalString( OBJECT_SELF, "TARGET" );
@@ -251,44 +344,35 @@ void T3_HeartBeat()
 
 void T3_Spawn()
 {
-    // Fallback if the logic does not work
     string sTarget = GetRandomTarget();
 
-    if (IsMaster())
+
+    // --- Anchors: secure home altars and hold them ---
+    if (IsWizardLeft())
     {
-     sTarget = WpFurthestAltarRight();
-     T3_DeclareAction( "Target: "+ sTarget );
+        sTarget = WpClosestAltarLeft();
     }
-    else if (IsWizardLeft())
+    else if (IsWizardRight())
     {
-     sTarget = WpClosestAltarLeft();
-     T3_DeclareAction( "Target: "+ sTarget );
+        sTarget = WpClosestAltarRight();
     }
-   else if (IsWizardRight())
+
+    // Everyone else: go the strike target set by master
+    else
     {
-     sTarget = WpClosestAltarRight();
-     T3_DeclareAction( "Target: "+ sTarget );
+        object oBrazier = GetObjectByTag("BRAZIER");
+        string sStrike = GetIsObjectValid(oBrazier)
+                         ? GetLocalString(oBrazier, "STRIKE_TARGET")
+                         : "";
+
+        if (sStrike == "")
+            sStrike = GetRandomTarget(); // simple fallback
+
+        sTarget = sStrike;
+        T3_DeclareAction("Strike team to " + sTarget);
     }
-    else if (IsFighterLeft())
-    {
-     sTarget = WpFurthestAltarRight();
-     T3_DeclareAction( "Target: "+ sTarget );
-    }
-    else if (IsFighterRight())
-    {
-     sTarget = WpClosestAltarLeft();
-     T3_DeclareAction( "Target: "+ sTarget );
-    }
-    else if (IsClericLeft())
-    {
-     sTarget = TagMaster();
-     T3_DeclareAction( "Target: "+ sTarget );
-    }
-    else if (IsClericRight())
-    {
-     sTarget = WpClosestAltarRight();
-     T3_DeclareAction( "Target: "+ sTarget );
-    }
+
+
 
 
     SetLocalString( OBJECT_SELF, "TARGET", sTarget );

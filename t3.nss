@@ -17,28 +17,6 @@ object T3_FindNearestAlly()
     return oNearest;
 }
 
-int T3_WizardStrategy()
-{
-    if (!IsWizard())
-    {
-        return FALSE;
-    }
-
-    // find nearest ally
-    object oNearestAlly = T3_FindNearestAlly();
-
-    //if the ally is in the combat
-    if (GetIsObjectValid(oNearestAlly) && GetIsInCombat(oNearestAlly))
-    {
-        // help!!
-        ActionMoveToObject(oNearestAlly, TRUE);
-        SpeakString( "I GOT YOUR BACK SOLDIER!!! " + GetName(oNearestAlly), TALKVOLUME_SHOUT );
-
-        return TRUE;
-    }
-
-    return FALSE;
-}
 // Called every heartbeat (i.e., every six seconds).
 void T3_HeartBeat()
 {
@@ -46,12 +24,36 @@ void T3_HeartBeat()
     if (GetIsInCombat())
     {
         SpeakString( "I AM IN COMBAT, AAAAAAAAAAAAAAAAAA", TALKVOLUME_SHOUT );
-        T3_WizardStrategy();
         return;
 
     }
 
     string sTarget = GetLocalString( OBJECT_SELF, "TARGET" );
+
+    // Master should have other logic
+    if (!IsMaster())
+    {
+        // Get the tag and object for the WpDoubler
+        string sDoublerTag = WpDoubler();
+        object oDoubler = GetObjectByTag(sDoublerTag);
+
+        // Check for the nearest perceived enemy
+        object oNearestEnemy = GetNearestPerceivedEnemy();
+
+        // Check if doubler is close and no enemies are seen
+        if (GetIsObjectValid(oDoubler) &&
+            GetDistanceToObject(oDoubler) < 13.0 &&
+            !GetIsObjectValid(oNearestEnemy))
+        {
+            if (sTarget != sDoublerTag)
+            {
+                SpeakString( "DOUBLER IS FREE" , TALKVOLUME_SHOUT );
+                sTarget = sDoublerTag;
+                SetLocalString( OBJECT_SELF, "TARGET", sTarget );
+            }
+        }
+    }
+
     if (sTarget == "")
         return;
 
@@ -77,7 +79,7 @@ void T3_Spawn()
     {
      sTarget = WpFurthestAltarRight();
      SpeakString( "Target: "+ sTarget , TALKVOLUME_SHOUT );
-    }   /*
+    }
     else if (IsWizardLeft())
     {
      sTarget = WpClosestAltarLeft();
@@ -87,7 +89,7 @@ void T3_Spawn()
     {
      sTarget = WpClosestAltarRight();
      SpeakString( "Target: "+ sTarget , TALKVOLUME_SHOUT );
-    } */
+    }
     else if (IsFighterLeft())
     {
      sTarget = WpFurthestAltarRight();
@@ -200,5 +202,5 @@ void T3_UserDefined( int Event )
 
 void T3_Initialize( string sColor )
 {
-    SetTeamName( sColor, "AlwaysSummer-Focus3-" + GetStringLowerCase( sColor ) );
+    SetTeamName( sColor, "AlwaysSummerDays-" + GetStringLowerCase( sColor ) );
 }

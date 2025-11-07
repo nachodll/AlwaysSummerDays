@@ -2,19 +2,78 @@
 #include "our_constants"
 
 
+// ---------------------------- Custom functions -------------------------------
+// Get objects with tag NPC_<ENEMY_COLOR>_<i> for i=1..7 and store them in the portal
+void T3_UpdateEnemyObjects()
+{
+    string sMyColor = MyColor(OBJECT_SELF);
+    if (sMyColor == "")
+        return; // not on a team?
+
+    string sEnemyColor;
+    if (sMyColor == COLOR_RED) sEnemyColor = COLOR_BLUE; else sEnemyColor = COLOR_RED;
+
+    object oPortal = MyPortal(OBJECT_SELF);
+    if (!GetIsObjectValid(oPortal))
+        return;
+
+    int i;
+    for (i = 1; i <= 7; i = i + 1)
+    {
+        string sTag = "NPC_" + sEnemyColor + "_" + IntToString(i);
+        object oEnemy = GetObjectByTag(sTag);
+        if (GetIsObjectValid(oEnemy))
+            SetLocalObject(oPortal, "ENEMY_" + IntToString(i), oEnemy);
+        else
+            SetLocalObject(oPortal, "ENEMY_" + IntToString(i), OBJECT_INVALID);
+    }
+}
+
+// Return the enemy object for index i (1..7)
+object T3_GetEnemyByIndex(int iIndex)
+{
+    object oPortal = MyPortal(OBJECT_SELF);
+    if (!GetIsObjectValid(oPortal))
+        return OBJECT_INVALID;
+    return GetLocalObject(oPortal, "ENEMY_" + IntToString(iIndex));
+}
+
+// Speak the (x,y) position of every known enemy.
+void T3_ReportEnemyPositions()
+{
+    int i;
+    for (i = 1; i <= 7; i = i + 1)
+    {
+        object oEnemy = T3_GetEnemyByIndex(i);
+
+        // Check that the enemy exists and is alive.
+        if (GetIsObjectValid(oEnemy) && !GetIsDead(oEnemy))
+        {
+            location lEnemy = GetLocation(oEnemy);
+            vector vPos = GetPositionFromLocation(lEnemy);
+            string sMessage = "Enemy " + IntToString(i) +
+                              " at (" +
+                              FloatToString(vPos.x, 1) + ", " +
+                              FloatToString(vPos.y, 1) + ", "+ ")";
+            SpeakString(sMessage);
+        }
+        else
+        {
+            SpeakString("Enemy " + IntToString(i) + ": not valid or dead", TALKVOLUME_TALK);
+        }
+    }
+}
+
+
+
+
+
+
+// ---------------------------- Standard functions -------------------------------
+// Called every combat round
 void T3_DetermineCombatRound( object oIntruder = OBJECT_INVALID, int nAI_Difficulty = 10 )
 {
     DetermineCombatRound( oIntruder, nAI_Difficulty );
-}
-
-object T3_FindNearestAlly()
-{
-    object oNearest = GetNearestCreature(CREATURE_TYPE_REPUTATION, REPUTATION_TYPE_FRIEND, OBJECT_SELF, 1);
-    if (oNearest == OBJECT_SELF)
-    {
-        oNearest = GetNearestCreature(CREATURE_TYPE_REPUTATION, REPUTATION_TYPE_FRIEND, OBJECT_SELF, 2);
-    }
-    return oNearest;
 }
 
 // Called every heartbeat (i.e., every six seconds).
@@ -27,6 +86,10 @@ void T3_HeartBeat()
         return;
 
     }
+
+    // Update enemy positions and report them
+    T3_UpdateEnemyObjects();
+    T3_ReportEnemyPositions();
 
     string sTarget = GetLocalString( OBJECT_SELF, "TARGET" );
 
@@ -139,7 +202,7 @@ void T3_UserDefined( int Event )
             break;
 
 
-// Whenever the NPC perceives a new creature.
+        // Whenever the NPC perceives a new creature.
         case EVENT_PERCEIVE:
         {
             // Get the creature that triggered this event

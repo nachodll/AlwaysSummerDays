@@ -1,6 +1,22 @@
 #include "NW_I0_GENERIC"
 #include "our_constants"
 
+// ---------------------------- Debug functions -------------------------------
+// Declare action together with their current role
+void T3_DeclareAction(string sAction)
+{
+    string sRole = "Unknown";
+    if (IsMaster())        sRole = "Master";
+    else if (IsWizardLeft())  sRole = "WizardLeft";
+    else if (IsWizardRight()) sRole = "WizardRight";
+    else if (IsClericLeft())  sRole = "ClericLeft";
+    else if (IsClericRight()) sRole = "ClericRight";
+    else if (IsFighterLeft()) sRole = "FighterLeft";
+    else if (IsFighterRight())sRole = "FighterRight";
+
+    string sMsg = "[" + sRole + "] " + sAction;
+    SpeakString(sMsg, TALKVOLUME_SHOUT);
+}
 
 // ---------------------------- Custom functions -------------------------------
 // Get objects with tag NPC_<ENEMY_COLOR>_<i> for i=1..7 and store them in the portal
@@ -38,34 +54,154 @@ object T3_GetEnemyByIndex(int iIndex)
     return GetLocalObject(oPortal, "ENEMY_" + IntToString(iIndex));
 }
 
-// Speak the (x,y) position of every known enemy.
-void T3_ReportEnemyPositions()
+
+
+// ---------------------------- Hunt the lone functions -------------------------------
+const float ISO_RANGE = 20.0;           // Enemy is "alone" if nearest ally is > 20m away.
+const float ISO_MAX_HUNT_DIST = 80.0;   // Don't hunt targets across the whole map.
+const int ISO_REQUIRED_TICKS = 3;    // Only hunt enemies who are persistently isolated.
+
+// Check whether a specific enemy oE is curretnly isolated from its allies
+int T3_IsEnemyCurrentlyIsolated(object oE)
 {
+    if (!GetIsObjectValid(oE) || GetIsDead(oE))
+        return FALSE;
+
+    int i;
+    float fClosest = 9999.0;
+    for (i = 1; i <= 7; i = i + 1)
+    {
+        object oOther = T3_GetEnemyByIndex(i);
+        if (!GetIsObjectValid(oOther) || GetIsDead(oOther) || oOther == oE)
+            continue;
+
+        float fDist = GetDistanceBetween(oE, oOther);
+        if (fDist < fClosest)
+            fClosest = fDist;
+    }
+
+    return (fClosest > ISO_RANGE);
+}
+
+// Keep track of isolation through time
+void T3_UpdateIsolationTicks()
+{
+    object oPortal = MyPortal(OBJECT_SELF);
+    if (!GetIsObjectValid(oPortal))
+        return;
+
     int i;
     for (i = 1; i <= 7; i = i + 1)
     {
-        object oEnemy = T3_GetEnemyByIndex(i);
+        object oE = T3_GetEnemyByIndex(i);
+        string sKey = "ISO_TICKS_" + IntToString(i);
 
-        // Check that the enemy exists and is alive.
-        if (GetIsObjectValid(oEnemy) && !GetIsDead(oEnemy))
+        if (GetIsObjectValid(oE) && !GetIsDead(oE) && T3_IsEnemyCurrentlyIsolated(oE))
         {
-            location lEnemy = GetLocation(oEnemy);
-            vector vPos = GetPositionFromLocation(lEnemy);
-            string sMessage = "Enemy " + IntToString(i) +
-                              " at (" +
-                              FloatToString(vPos.x, 1) + ", " +
-                              FloatToString(vPos.y, 1) + ", "+ ")";
-            SpeakString(sMessage);
+            int nTicks = GetLocalInt(oPortal, sKey);
+            SetLocalInt(oPortal, sKey, nTicks + 1);
         }
         else
         {
-            SpeakString("Enemy " + IntToString(i) + ": not valid or dead", TALKVOLUME_TALK);
+            // Reset streak if not isolated
+            SetLocalInt(oPortal, sKey, 0);
         }
     }
 }
 
+// Scans for a good persistently isolated enemy to hunt close to oHunter
+object T3_FindBestPersistentlyIsolatedEnemy(object oHunter)
+{
+    object oPortal = MyPortal(oHunter);
+    if (!GetIsObjectValid(oPortal))
+        return OBJECT_INVALID;
+
+    int i;
+    float fBestDist = 99999.0;
+    object oBest = OBJECT_INVALID;
+
+    for (i = 1; i <= 7; i = i + 1)
+    {
+        object oE = T3_GetEnemyByIndex(i);
+        if (!GetIsObjectValid(oE) || GetIsDead(oE))
+            continue;
+
+        // Require persistent isolation
+        int nTicks = GetLocalInt(oPortal, "ISO_TICKS_" + IntToString(i));
+        if (!(nTicks >= ISO_REQUIRED_TICKS))
+            continue;
+
+        float fDist = GetDistanceBetween(oHunter, oE);
+        if (fDist > ISO_MAX_HUNT_DIST)
+            continue;
+
+        if (fDist < fBestDist)
+        {
+            fBestDist = fDist;
+            oBest = oE;
+        }
+    }
+
+    return oBest;
+}
+
+// Only master sets the team-wide hunt target on the portal.
+void T3_MasterUpdateHuntTarget()
+{
+    if (!IsMaster())
+        return;
+
+    object oBrazier = GetObjectByTag( "BRAZIER" );
+    if (!GetIsObjectValid( oBrazier ))
+        return;
+
+    // First update the isolation tick counters.
+    T3_UpdateIsolationTicks();
+
+    object oIsolated = T3_FindBestPersistentlyIsolatedEnemy(OBJECT_SELF);
+
+    if (GetIsObjectValid(oIsolated))
+    {
+        string sTag = GetTag(oIsolated);
+        SetLocalString(oBrazier, "HUNT_TAG", sTag);
+        SetLocalString(OBJECT_SELF, "TARGET", sTag);
+
+        T3_DeclareAction("HUNT: isolated enemy " + sTag);
+    }
+    else
+    {
+        DeleteLocalString(oBrazier, "HUNT_TAG");
+    }
+}
 
 
+// Chosen hunters (M, WL adn CL)read HUNT_TAG from brazier and join the hunt if valid.
+void T3_JoinHuntIfAvailable()
+{
+    object oBrazier = GetObjectByTag( "BRAZIER" );
+    if (!GetIsObjectValid( oBrazier ))
+        return;
+
+    string sHunt = GetLocalString(oBrazier, "HUNT_TAG");
+    if (sHunt == "")
+        return;
+
+    object oHuntTarget = GetObjectByTag(sHunt);
+    if (!GetIsObjectValid(oHuntTarget) || GetIsDead(oHuntTarget))
+        return;
+
+    // Only these three roles participate in the 3v1 hunt.
+    if (!(IsMaster() || IsClericLeft() || IsWizardLeft()))
+        return;
+
+    // Set our local target to the hunt target if not already set.
+    string sCurrent = GetLocalString(OBJECT_SELF, "TARGET");
+    if (sCurrent != sHunt)
+    {
+        SetLocalString(OBJECT_SELF, "TARGET", sHunt);
+        T3_DeclareAction("Joining hunt on " + sHunt);
+    }
+}
 
 
 
@@ -79,54 +215,35 @@ void T3_DetermineCombatRound( object oIntruder = OBJECT_INVALID, int nAI_Difficu
 // Called every heartbeat (i.e., every six seconds).
 void T3_HeartBeat()
 {
+    // Always keep enemy object references fresh, also during combat
+    T3_UpdateEnemyObjects();
+
+    // Master periodically selects an isolated enemy to hunt
+    T3_MasterUpdateHuntTarget();
 
     if (GetIsInCombat())
     {
-        SpeakString( "I AM IN COMBAT, AAAAAAAAAAAAAAAAAA", TALKVOLUME_SHOUT );
+        T3_DeclareAction("IN COMBAT - interrupting heartbeat");
         return;
-
     }
 
-    // Update enemy positions and report them
-    T3_UpdateEnemyObjects();
-    T3_ReportEnemyPositions();
+    // Master and designated hunters adopt the hunt target if any.
+    T3_JoinHuntIfAvailable();
 
+    // Keep moving towards the target
     string sTarget = GetLocalString( OBJECT_SELF, "TARGET" );
-
-    // Master should have other logic
-    if (!IsMaster())
-    {
-        // Get the tag and object for the WpDoubler
-        string sDoublerTag = WpDoubler();
-        object oDoubler = GetObjectByTag(sDoublerTag);
-
-        // Check for the nearest perceived enemy
-        object oNearestEnemy = GetNearestPerceivedEnemy();
-
-        // Check if doubler is close and no enemies are seen
-        if (GetIsObjectValid(oDoubler) &&
-            GetDistanceToObject(oDoubler) < 13.0 &&
-            !GetIsObjectValid(oNearestEnemy))
-        {
-            if (sTarget != sDoublerTag)
-            {
-                SpeakString( "DOUBLER IS FREE" , TALKVOLUME_SHOUT );
-                sTarget = sDoublerTag;
-                SetLocalString( OBJECT_SELF, "TARGET", sTarget );
-            }
-        }
-    }
-
     if (sTarget == "")
         return;
-
     object oTarget = GetObjectByTag( sTarget );
     if (!GetIsObjectValid( oTarget ))
         return;
 
     float fToTarget = GetDistanceToObject( oTarget );
     if (fToTarget > 0.5)
+    {
         ActionMoveToLocation( GetLocation( oTarget ), TRUE );
+        T3_DeclareAction("Moving to " + sTarget);
+    }
 
 
     return;
@@ -134,50 +251,48 @@ void T3_HeartBeat()
 
 void T3_Spawn()
 {
-    {
     // Fallback if the logic does not work
     string sTarget = GetRandomTarget();
 
     if (IsMaster())
     {
      sTarget = WpFurthestAltarRight();
-     SpeakString( "Target: "+ sTarget , TALKVOLUME_SHOUT );
+     T3_DeclareAction( "Target: "+ sTarget );
     }
     else if (IsWizardLeft())
     {
      sTarget = WpClosestAltarLeft();
-     SpeakString( "Target: "+ sTarget , TALKVOLUME_SHOUT );
+     T3_DeclareAction( "Target: "+ sTarget );
     }
    else if (IsWizardRight())
     {
      sTarget = WpClosestAltarRight();
-     SpeakString( "Target: "+ sTarget , TALKVOLUME_SHOUT );
+     T3_DeclareAction( "Target: "+ sTarget );
     }
     else if (IsFighterLeft())
     {
      sTarget = WpFurthestAltarRight();
-     SpeakString( "Target: "+ sTarget , TALKVOLUME_SHOUT );
+     T3_DeclareAction( "Target: "+ sTarget );
     }
     else if (IsFighterRight())
     {
      sTarget = WpClosestAltarLeft();
-     SpeakString( "Target: "+ sTarget , TALKVOLUME_SHOUT );
+     T3_DeclareAction( "Target: "+ sTarget );
     }
     else if (IsClericLeft())
     {
      sTarget = TagMaster();
-     SpeakString( "Target: "+ sTarget , TALKVOLUME_SHOUT );
+     T3_DeclareAction( "Target: "+ sTarget );
     }
     else if (IsClericRight())
     {
      sTarget = WpClosestAltarRight();
-     SpeakString( "Target: "+ sTarget , TALKVOLUME_SHOUT );
+     T3_DeclareAction( "Target: "+ sTarget );
     }
 
 
     SetLocalString( OBJECT_SELF, "TARGET", sTarget );
     ActionMoveToLocation( GetLocation( GetObjectByTag( sTarget ) ), TRUE );
-}
 }
 
 void T3_UserDefined( int Event )
@@ -217,7 +332,7 @@ void T3_UserDefined( int Event )
 
                     // Stop current movement and attack the close-range enemy
                     ClearAllActions();
-                    ActionAttack(oPerceived);
+                    DetermineCombatRound(oPerceived);
                 }
                 else
                 {

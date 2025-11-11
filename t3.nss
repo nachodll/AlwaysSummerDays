@@ -412,8 +412,7 @@ void T3_Spawn()
 {
     string sTarget;
 
-
-    // --- Anchors: secure home altars and hold them ---
+    // Anchors: secure home altars and hold them
     if (IsWizardLeft())
     {
         sTarget = WpClosestAltarLeft();
@@ -423,27 +422,13 @@ void T3_Spawn()
         sTarget = WpClosestAltarRight();
     }
 
-    // Everyone else: go the strike target set by master
-    //else
-    //{
-    //    object oBrazier = GetObjectByTag("BRAZIER");
-    //    string sStrike = GetIsObjectValid(oBrazier)
-    //                     ? GetLocalString(oBrazier, "STRIKE_TARGET")
-    //                     : "";
-    //
-    //    if (sStrike == "")
-    //        sStrike = WpDoubler(); // simple fallback
-    //
-    //    sTarget = sStrike;
-    //    T3_DeclareAction("Strike team to " + sTarget);
-    //}
-
-
-
-
-    SetLocalString( OBJECT_SELF, "TARGET", sTarget );
-    ActionMoveToLocation( GetLocation( GetObjectByTag( sTarget ) ), TRUE );
+    // If master dies strike target does reset
+    object oBrazier = GetObjectByTag("BRAZIER");
+    if (!GetIsObjectValid(oBrazier))
+        return;
+    SetLocalString(oBrazier, "STRIKE_TARGET", "");
 }
+
 
 void T3_UserDefined( int Event )
 {

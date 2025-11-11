@@ -3,7 +3,7 @@
 
 // ---------------------------- Debug functions -------------------------------
 // Declare action together with their current role
-void TASD_DeclareAction(string sAction)
+void T3_DeclareAction(string sAction)
 {
     string sRole = "Unknown";
     if (IsMaster())        sRole = "Master";
@@ -20,7 +20,7 @@ void TASD_DeclareAction(string sAction)
 
 // ---------------------------- Custom functions -------------------------------
 // Get objects with tag NPC_<ENEMY_COLOR>_<i> for i=1..7 and store them in the portal
-void TASD_UpdateEnemyObjects()
+void T3_UpdateEnemyObjects()
 {
     string sMyColor = MyColor(OBJECT_SELF);
     if (sMyColor == "")
@@ -46,7 +46,7 @@ void TASD_UpdateEnemyObjects()
 }
 
 // Return the enemy object for index i (1..7)
-object TASD_GetEnemyByIndex(int iIndex)
+object T3_GetEnemyByIndex(int iIndex)
 {
     object oPortal = MyPortal(OBJECT_SELF);
     if (!GetIsObjectValid(oPortal))
@@ -54,28 +54,29 @@ object TASD_GetEnemyByIndex(int iIndex)
     return GetLocalObject(oPortal, "ENEMY_" + IntToString(iIndex));
 }
 
+
+// ---------------------------- Strike attac functions -------------------------------
 // Find the closest free altar
-string TASD_FindFreeAltar()
+string T3_FindFreeAltar()
 {
     float fBest = 9999.0;
     string sBest = "";
 
     int i;
-    for (i = 0; i < 4; i++)
+    for (i = 0; i < 3; i++)
     {
-        string sAltar;
+        string sAltarWaypoint;
         if (i==0){
-            sAltar = ALTAR_RED_1;
+            sAltarWaypoint = WpDoubler();
         }
         else if (i==1){
-            sAltar = ALTAR_RED_2;
+            sAltarWaypoint = WpFurthestAltarRight();
         }
         else if (i==2){
-            sAltar = ALTAR_BLUE_1;
+            sAltarWaypoint = WpFurthestAltarLeft();
         }
-        else if (i==3){
-            sAltar = ALTAR_BLUE_2;
-        }
+
+        string sAltar = GetStringRight(sAltarWaypoint, GetStringLength(sAltarWaypoint) - 3);
 
         if (ClaimerOf(sAltar) == MyColor()){
             continue;
@@ -95,7 +96,7 @@ string TASD_FindFreeAltar()
 }
 
 // Master updates strike target on the brazier
-void TASD_MasterUpdateStrikeTarget()
+void T3_MasterUpdateStrikeTarget()
 {
     if (!IsMaster())
         return;
@@ -104,15 +105,32 @@ void TASD_MasterUpdateStrikeTarget()
     if (!GetIsObjectValid(oBrazier))
         return;
 
-    string sStrike = TASD_FindFreeAltar();
-    if (sStrike != "")
+    string sStrike = GetLocalString(oBrazier, "STRIKE_TARGET");
+
+    // If current strike target is already ours AND has a guard, clear it so we pick a new one
+    if (sStrike != "" && ClaimerOf(sStrike) == MyColor())
     {
-        SetLocalString(oBrazier, "STRIKE_TARGET", sStrike);
-        TASD_DeclareAction("Strike target set to " + sStrike);
+        string sGuardTag = GetLocalString(oBrazier, "GUARD_" + sStrike);
+        if (sGuardTag != "")
+        {
+            DeleteLocalString(oBrazier, "STRIKE_TARGET");
+            sStrike = "";
+        }
+    }
+
+    // If we have no active strike target, pick the closest free altar
+    if (sStrike == "")
+    {
+        string sNew = T3_FindFreeAltar();
+        if (sNew != "")
+        {
+            SetLocalString(oBrazier, "STRIKE_TARGET", sNew);
+            T3_DeclareAction("Strike target set to " + sNew);
+        }
     }
 }
 
-void TASD_JoinStrikeAttack()
+void T3_JoinStrikeAttack()
 {
     // Wizards never join the strike attack
     if (IsWizardLeft() || IsWizardRight())
@@ -122,7 +140,37 @@ void TASD_JoinStrikeAttack()
     if (!GetIsObjectValid(oBrazier))
         return;
 
-    string sStrike = GetLocalString(oBrazier, "STRIKE_TARGET");
+    // Hunting roles will always prioritize the hunt
+    //string sHunt = GetLocalString(oBrazier, "HUNT_TAG");
+    //if (IsMaster() || IsFighterLeft() || IsClericLeft())
+    //{
+    //    if (sHunt != "")
+    //        return;
+    //}
+
+     // If we are already assigned as a guard, hold that altar as long as it's ours
+    string sGuarding = GetLocalString(OBJECT_SELF, "GUARDING_ALTAR");
+    if (sGuarding != "")
+    {
+        if (ClaimerOf(sGuarding) == MyColor())
+        {
+            string sCur = GetLocalString(OBJECT_SELF, "TARGET");
+            if (sCur != sGuarding)
+            {
+                SetLocalString(OBJECT_SELF, "TARGET", sGuarding);
+                T3_DeclareAction("Holding " + sGuarding);
+            }
+            return;
+        }
+        else
+        {
+            // Lost the altar: stop guarding
+            DeleteLocalString(OBJECT_SELF, "GUARDING_ALTAR");
+            DeleteLocalString(oBrazier, "GUARD_" + sGuarding);
+        }
+    }
+
+     string sStrike = GetLocalString(oBrazier, "STRIKE_TARGET");
     if (sStrike == "")
         return;
 
@@ -130,20 +178,40 @@ void TASD_JoinStrikeAttack()
     if (!GetIsObjectValid(oStrikeTarget))
         return;
 
-    // Hunting roles will always prioritize the hunt
-    string sHunt = GetLocalString(oBrazier, "HUNT_TAG");
-    if (IsMaster() || IsFighterLeft() || IsClericLeft())
+    // If this strike altar is already ours, maybe assign a guard
+    if (ClaimerOf(sStrike) == MyColor())
     {
-        if (sHunt != "")
+        // Only non-Master can become guard
+        if (!IsMaster()
+            && GetLocalString(oBrazier, "GUARD_" + sStrike) == ""
+            && GetDistanceToObject(oStrikeTarget) <= 3.5)
+        {
+            // Claim guard role
+            string sMyTag = GetTag(OBJECT_SELF);
+            SetLocalString(oBrazier, "GUARD_" + sStrike, sMyTag);
+            SetLocalString(OBJECT_SELF, "GUARDING_ALTAR", sStrike);
+            SetLocalString(OBJECT_SELF, "TARGET", sStrike);
+            T3_DeclareAction("Assigned to guard " + sStrike);
             return;
+        }
+
+        // If we're not the guard, and a guard exists, then wait for Master pick a new target
+        string sGuardTag = GetLocalString(oBrazier, "GUARD_" + sStrike);
+        if (sGuardTag != "" && GetTag(OBJECT_SELF) != sGuardTag)
+        {
+            T3_DeclareAction("Waiting for master to re target");
+            return;
+        }
     }
 
+    // Normal case: join / stay on current strike target
     string sCurrent = GetLocalString(OBJECT_SELF, "TARGET");
     if (sCurrent != sStrike)
     {
         SetLocalString(OBJECT_SELF, "TARGET", sStrike);
-        TASD_DeclareAction("Joining STRIKE on " + sStrike);
+        T3_DeclareAction("Joining STRIKE on " + sStrike);
     }
+
 }
 
 
@@ -154,7 +222,7 @@ const float ISO_MAX_HUNT_DIST = 80.0;   // Don't hunt targets across the whole m
 const int ISO_REQUIRED_TICKS = 3;    // Only hunt enemies who are persistently isolated.
 
 // Check whether a specific enemy oE is curretnly isolated from its allies
-int TASD_IsEnemyCurrentlyIsolated(object oE)
+int T3_IsEnemyCurrentlyIsolated(object oE)
 {
     if (!GetIsObjectValid(oE) || GetIsDead(oE))
         return FALSE;
@@ -163,7 +231,7 @@ int TASD_IsEnemyCurrentlyIsolated(object oE)
     float fClosest = 9999.0;
     for (i = 1; i <= 7; i = i + 1)
     {
-        object oOther = TASD_GetEnemyByIndex(i);
+        object oOther = T3_GetEnemyByIndex(i);
         if (!GetIsObjectValid(oOther) || GetIsDead(oOther) || oOther == oE)
             continue;
 
@@ -176,7 +244,7 @@ int TASD_IsEnemyCurrentlyIsolated(object oE)
 }
 
 // Keep track of isolation through time
-void TASD_UpdateIsolationTicks()
+void T3_UpdateIsolationTicks()
 {
     object oPortal = MyPortal(OBJECT_SELF);
     if (!GetIsObjectValid(oPortal))
@@ -185,10 +253,10 @@ void TASD_UpdateIsolationTicks()
     int i;
     for (i = 1; i <= 7; i = i + 1)
     {
-        object oE = TASD_GetEnemyByIndex(i);
+        object oE = T3_GetEnemyByIndex(i);
         string sKey = "ISO_TICKS_" + IntToString(i);
 
-        if (GetIsObjectValid(oE) && !GetIsDead(oE) && TASD_IsEnemyCurrentlyIsolated(oE))
+        if (GetIsObjectValid(oE) && !GetIsDead(oE) && T3_IsEnemyCurrentlyIsolated(oE))
         {
             int nTicks = GetLocalInt(oPortal, sKey);
             SetLocalInt(oPortal, sKey, nTicks + 1);
@@ -202,7 +270,7 @@ void TASD_UpdateIsolationTicks()
 }
 
 // Scans for a good persistently isolated enemy to hunt close to oHunter
-object TASD_FindBestPersistentlyIsolatedEnemy(object oHunter)
+object T3_FindBestPersistentlyIsolatedEnemy(object oHunter)
 {
     object oPortal = MyPortal(oHunter);
     if (!GetIsObjectValid(oPortal))
@@ -214,7 +282,7 @@ object TASD_FindBestPersistentlyIsolatedEnemy(object oHunter)
 
     for (i = 1; i <= 7; i = i + 1)
     {
-        object oE = TASD_GetEnemyByIndex(i);
+        object oE = T3_GetEnemyByIndex(i);
         if (!GetIsObjectValid(oE) || GetIsDead(oE))
             continue;
 
@@ -238,7 +306,7 @@ object TASD_FindBestPersistentlyIsolatedEnemy(object oHunter)
 }
 
 // Only master sets the team-wide hunt target on the portal.
-void TASD_MasterUpdateHuntTarget()
+void T3_MasterUpdateHuntTarget()
 {
     if (!IsMaster())
         return;
@@ -248,9 +316,9 @@ void TASD_MasterUpdateHuntTarget()
         return;
 
     // First update the isolation tick counters.
-    TASD_UpdateIsolationTicks();
+    T3_UpdateIsolationTicks();
 
-    object oIsolated = TASD_FindBestPersistentlyIsolatedEnemy(OBJECT_SELF);
+    object oIsolated = T3_FindBestPersistentlyIsolatedEnemy(OBJECT_SELF);
 
     if (GetIsObjectValid(oIsolated))
     {
@@ -258,7 +326,7 @@ void TASD_MasterUpdateHuntTarget()
         SetLocalString(oBrazier, "HUNT_TAG", sTag);
         SetLocalString(OBJECT_SELF, "TARGET", sTag);
 
-        TASD_DeclareAction("HUNT: isolated enemy " + sTag);
+        T3_DeclareAction("HUNT: isolated enemy " + sTag);
     }
     else
     {
@@ -269,7 +337,7 @@ void TASD_MasterUpdateHuntTarget()
 
 
 // Chosen hunters (M, FL adn CL)read HUNT_TAG from brazier and join the hunt if valid.
-void TASD_JoinHuntIfAvailable()
+void T3_JoinHuntIfAvailable()
 {
     object oBrazier = GetObjectByTag( "BRAZIER" );
     if (!GetIsObjectValid( oBrazier ))
@@ -292,7 +360,7 @@ void TASD_JoinHuntIfAvailable()
     if (sCurrent != sHunt)
     {
         SetLocalString(OBJECT_SELF, "TARGET", sHunt);
-        TASD_DeclareAction("Joining hunt on " + sHunt);
+        T3_DeclareAction("Joining hunt on " + sHunt);
     }
 }
 
@@ -300,28 +368,26 @@ void TASD_JoinHuntIfAvailable()
 
 // ---------------------------- Standard functions -------------------------------
 // Called every combat round
-void TASD_DetermineCombatRound( object oIntruder = OBJECT_INVALID, int nAI_Difficulty = 10 )
+void T3_DetermineCombatRound( object oIntruder = OBJECT_INVALID, int nAI_Difficulty = 10 )
 {
     DetermineCombatRound( oIntruder, nAI_Difficulty );
 }
 
 // Called every heartbeat (i.e., every six seconds).
-void TASD_HeartBeat()
+void T3_HeartBeat()
 {
-    TASD_UpdateEnemyObjects();
-    TASD_MasterUpdateHuntTarget();       // hunt the lone (priority)
-    TASD_MasterUpdateStrikeTarget();     // strike target
+    //T3_UpdateEnemyObjects();
+    //T3_MasterUpdateHuntTarget();       // hunt the lone (priority)
+    T3_MasterUpdateStrikeTarget();     // strike target
 
     if (GetIsInCombat())
     {
-        TASD_DeclareAction("IN COMBAT - interrupting heartbeat");
+        T3_DeclareAction("IN COMBAT - interrupting heartbeat");
         return;
     }
 
-    // Master and designated hunters adopt the hunt target if any.
-    TASD_JoinHuntIfAvailable();
-    // Master and strike team adop the strike target
-    TASD_JoinStrikeAttack();
+    //T3_JoinHuntIfAvailable(); // hunt team read target from brazier, if any
+    T3_JoinStrikeAttack();    // strike team read target from brazier
 
     // Keep moving towards the target
     string sTarget = GetLocalString( OBJECT_SELF, "TARGET" );
@@ -335,16 +401,16 @@ void TASD_HeartBeat()
     if (fToTarget > 0.5)
     {
         ActionMoveToLocation( GetLocation( oTarget ), TRUE );
-        TASD_DeclareAction("Moving to " + sTarget);
+        //T3_DeclareAction("Moving to " + sTarget);
     }
 
 
     return;
 }
 
-void TASD_Spawn()
+void T3_Spawn()
 {
-    string sTarget = GetRandomTarget();
+    string sTarget;
 
 
     // --- Anchors: secure home altars and hold them ---
@@ -358,19 +424,19 @@ void TASD_Spawn()
     }
 
     // Everyone else: go the strike target set by master
-    else
-    {
-        object oBrazier = GetObjectByTag("BRAZIER");
-        string sStrike = GetIsObjectValid(oBrazier)
-                         ? GetLocalString(oBrazier, "STRIKE_TARGET")
-                         : "";
-
-        if (sStrike == "")
-            sStrike = GetRandomTarget(); // simple fallback
-
-        sTarget = sStrike;
-        TASD_DeclareAction("Strike team to " + sTarget);
-    }
+    //else
+    //{
+    //    object oBrazier = GetObjectByTag("BRAZIER");
+    //    string sStrike = GetIsObjectValid(oBrazier)
+    //                     ? GetLocalString(oBrazier, "STRIKE_TARGET")
+    //                     : "";
+    //
+    //    if (sStrike == "")
+    //        sStrike = WpDoubler(); // simple fallback
+    //
+    //    sTarget = sStrike;
+    //    T3_DeclareAction("Strike team to " + sTarget);
+    //}
 
 
 
@@ -379,7 +445,7 @@ void TASD_Spawn()
     ActionMoveToLocation( GetLocation( GetObjectByTag( sTarget ) ), TRUE );
 }
 
-void TASD_UserDefined( int Event )
+void T3_UserDefined( int Event )
 {
     switch (Event)
     {
@@ -397,49 +463,12 @@ void TASD_UserDefined( int Event )
 
         // Every heartbeat (i.e., every six seconds).
         case EVENT_HEARTBEAT:
-            TASD_HeartBeat();
+            T3_HeartBeat();
             break;
-
 
         // Whenever the NPC perceives a new creature.
         case EVENT_PERCEIVE:
-        {
-            // Get the creature that triggered this event
-            object oPerceived = GetLastPerceived();
-
-            // Check if the perceived creature is an enemy
-            if (GetIsEnemy(oPerceived))
-            {
-                // Check if the enemy is within 3.0 meters
-                if (GetDistanceToObject(oPerceived) < 3.0)
-                {
-
-                    // Stop current movement and attack the close-range enemy
-                    ClearAllActions();
-                    DetermineCombatRound(oPerceived);
-                }
-                else
-                {
-                    // --- Keep running towards target ---
-                    // The enemy is far away, so ignore them and
-                    // resume moving to the main target waypoint.
-                    string sTarget = GetLocalString(OBJECT_SELF, "TARGET");
-                    if (sTarget != "") // Only resume if we have a valid target
-                    {
-                        object oTarget = GetObjectByTag(sTarget);
-                        if (GetIsObjectValid(oTarget))
-                        {
-                            // Re-issue the move command because this event
-                            // interrupted the previous action.
-                            ActionMoveToLocation(GetLocation(oTarget), TRUE);
-                        }
-                    }
-                }
-            }
             break;
-        }
-
-
 
         // When a spell is cast at the NPC.
         case EVENT_SPELL_CAST_AT:
@@ -455,14 +484,14 @@ void TASD_UserDefined( int Event )
 
         // When the NPC has just been spawned.
         case EVENT_SPAWN:
-            TASD_Spawn();
+            T3_Spawn();
             break;
     }
 
     return;
 }
 
-void TASD_Initialize( string sColor )
+void T3_Initialize( string sColor )
 {
     SetTeamName( sColor, "AlwaysSummerDays-" + GetStringLowerCase( sColor ) );
 }

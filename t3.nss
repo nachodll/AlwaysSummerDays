@@ -19,39 +19,18 @@ void T3_DeclareAction(string sAction)
 }
 
 // ---------------------------- Custom functions -------------------------------
-// Get objects with tag NPC_<ENEMY_COLOR>_<i> for i=1..7 and store them in the portal
-void T3_UpdateEnemyObjects()
+// Return the enemy object for index i (1..7)
+object T3_GetEnemyByIndex(int iIndex)
 {
     string sMyColor = MyColor(OBJECT_SELF);
     if (sMyColor == "")
-        return; // not on a team?
+        return OBJECT_INVALID; // not on a team?
 
     string sEnemyColor;
     if (sMyColor == COLOR_RED) sEnemyColor = COLOR_BLUE; else sEnemyColor = COLOR_RED;
 
-    object oPortal = MyPortal(OBJECT_SELF);
-    if (!GetIsObjectValid(oPortal))
-        return;
-
-    int i;
-    for (i = 1; i <= 7; i = i + 1)
-    {
-        string sTag = "NPC_" + sEnemyColor + "_" + IntToString(i);
-        object oEnemy = GetObjectByTag(sTag);
-        if (GetIsObjectValid(oEnemy))
-            SetLocalObject(oPortal, "ENEMY_" + IntToString(i), oEnemy);
-        else
-            SetLocalObject(oPortal, "ENEMY_" + IntToString(i), OBJECT_INVALID);
-    }
-}
-
-// Return the enemy object for index i (1..7)
-object T3_GetEnemyByIndex(int iIndex)
-{
-    object oPortal = MyPortal(OBJECT_SELF);
-    if (!GetIsObjectValid(oPortal))
-        return OBJECT_INVALID;
-    return GetLocalObject(oPortal, "ENEMY_" + IntToString(iIndex));
+    string sTag = "NPC_" + sEnemyColor + "_" + IntToString(iIndex);
+    return GetObjectByTag(sTag);
 }
 
 
@@ -470,6 +449,13 @@ void T3_UserDefined( int Event )
         // When the NPC has just been spawned.
         case EVENT_SPAWN:
             T3_Spawn();
+            break;
+        // Called once for each team per 6 seconds.
+        // Note: You cannot use SpeakString() in this event as the caller is not an object.
+        // Instead, if you want to show a text above a creature oPC, use FloatingTextStringOnCreature().
+        case EVENT_AREA:
+            object oPC = GetFirstPC();
+            FloatingTextStringOnCreature( "T1 Area Event", oPC, FALSE );
             break;
     }
 

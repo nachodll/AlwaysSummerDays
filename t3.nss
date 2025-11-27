@@ -152,8 +152,8 @@ void T3_MasterUpdateStrikeTarget()
 // Check for very close unclaimed altars and claim them (excludes wizards and base altars)
 void T3_ClaimNearbyUnclaimedAltars()
 {
-    // Wizards don't participate in opportunistic claiming
-    if (IsWizardLeft() || IsWizardRight())
+    // Wizards and Master don't participate in opportunistic claiming
+    if (IsWizardLeft() || IsWizardRight() || IsMaster())
         return;
 
     string sUnclaimed = T3_FindClosestUnclaimedAltar();
@@ -176,23 +176,21 @@ void T3_ClaimNearbyUnclaimedAltars()
     // If we're at the unclaimed altar, claim it and become its guard
     if (fDistToUnclaimed <= 3.5)
     {
-        if (ClaimerOf(sUnclaimed) == MyColor())
+        // Altar is now ours - become its guardian
+        object oBrazier = GetObjectByTag("BRAZIER");
+        if (GetIsObjectValid(oBrazier))
         {
-            // Altar is now ours - become its guardian
-            object oBrazier = GetObjectByTag("BRAZIER");
-            if (GetIsObjectValid(oBrazier))
+            string sGuard = GetLocalString(oBrazier, "ASD_GUARD_" + sUnclaimed);
+            if (sGuard == "")
             {
-                string sGuard = GetLocalString(oBrazier, "ASD_GUARD_" + sUnclaimed);
-                if (sGuard == "")
-                {
-                    string sMyTag = GetTag(OBJECT_SELF);
-                    SetLocalString(oBrazier, "ASD_GUARD_" + sUnclaimed, sMyTag);
-                    SetLocalString(OBJECT_SELF, "GUARDING_ALTAR", sUnclaimed);
-                    SetLocalString(OBJECT_SELF, "TARGET", sUnclaimed);
-                    T3_DeclareAction("Claimed and guarding " + sUnclaimed);
-                }
+                string sMyTag = GetTag(OBJECT_SELF);
+                SetLocalString(oBrazier, "ASD_GUARD_" + sUnclaimed, sMyTag);
+                SetLocalString(OBJECT_SELF, "GUARDING_ALTAR", sUnclaimed);
+                SetLocalString(OBJECT_SELF, "TARGET", sUnclaimed);
+                T3_DeclareAction("Claimed and guarding " + sUnclaimed);
             }
         }
+        
     }
     // If there's an unclaimed altar within reasonable range, go to it
     else if (fDistToUnclaimed <= 16.0)
@@ -217,12 +215,12 @@ void T3_JoinStrikeAttack()
         return;
 
     // Hunting roles will always prioritize the hunt
-    //string sHunt = GetLocalString(oBrazier, "ASD_HUNT_TARGET");
-    //if (IsMaster() || IsFighterLeft() || IsClericLeft())
-    //{
-    //    if (sHunt != "")
-    //        return;
-    //}
+    string sHunt = GetLocalString(oBrazier, "ASD_HUNT_TARGET");
+    if (IsMaster() || IsFighterLeft() || IsClericLeft())
+    {
+        if (sHunt != "")
+            return;
+    }
 
      // If we are already assigned as a guard, hold that altar as long as it's ours
     string sGuarding = GetLocalString(OBJECT_SELF, "GUARDING_ALTAR");
@@ -391,6 +389,19 @@ void T3_MasterUpdateHuntTarget()
     if (!GetIsObjectValid( oBrazier ))
         return;
 
+    // Check if current hunt target is dead or invalid clear it
+    string sCurrentHunt = GetLocalString(oBrazier, "ASD_HUNT_TARGET");
+    if (sCurrentHunt != "")
+    {
+        object oCurrentTarget = GetObjectByTag(sCurrentHunt);
+        if (!GetIsObjectValid(oCurrentTarget) || GetIsDead(oCurrentTarget))
+        {
+            DeleteLocalString(oBrazier, "ASD_HUNT_TARGET");
+            T3_DeclareAction("Hunt target died - clearing");
+            sCurrentHunt = "";
+        }
+    }
+
     // First update the isolation tick counters.
     T3_UpdateIsolationTicks();
 
@@ -403,11 +414,6 @@ void T3_MasterUpdateHuntTarget()
         SetLocalString(OBJECT_SELF, "TARGET", sTag);
 
         T3_DeclareAction("HUNT: isolated enemy " + sTag);
-    }
-    else
-    {
-        DeleteLocalString(oBrazier, "ASD_HUNT_TARGET");
-
     }
 }
 
@@ -490,7 +496,7 @@ object T3_GetFocusTarget()
 // Cleric - heal nearby allies if damaged
 int T3_ClericHealIfNeeded()
 {
-    if (!IsCleric())
+    if (!IsCleric() || !GetIsInCombat())
         return FALSE;
 
     object oBest = OBJECT_INVALID;

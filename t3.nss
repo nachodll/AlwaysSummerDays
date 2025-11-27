@@ -691,8 +691,7 @@ void T3_DetermineCombatRound(object oIntruder = OBJECT_INVALID, int nAI_Difficul
 // Called every heartbeat (i.e., every six seconds).
 void T3_HeartBeat()
 {
-    //T3_UpdateEnemyObjects();
-    //T3_MasterUpdateHuntTarget();       // hunt the lone (priority)
+    T3_MasterUpdateHuntTarget();       // hunt the lone (priority)
     T3_MasterUpdateStrikeTarget();     // strike target
 
     // The wizard checks for enemies within 30 to start using its spells
@@ -709,11 +708,11 @@ void T3_HeartBeat()
 
     if (GetIsInCombat())
     {
-        T3_DeclareAction("IN COMBAT - interrupting heartbeat");
+        //T3_DeclareAction("IN COMBAT - interrupting heartbeat");
         return;
     }
 
-    //T3_JoinHuntIfAvailable(); // hunt team read target from brazier, if any
+    T3_JoinHuntIfAvailable(); // hunt team read target from brazier, if any
     T3_JoinStrikeAttack();    // strike team read target from brazier
     T3_ClaimNearbyUnclaimedAltars(); // opportunistically claim nearby unclaimed altars
 

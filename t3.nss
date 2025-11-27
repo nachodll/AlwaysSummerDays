@@ -440,13 +440,252 @@ void T3_JoinHuntIfAvailable()
     }
 }
 
+// ---------------------- Individual Unit Code Functions -------------------------
+
+// Get local focus target in a combat
+object T3_GetFocusTarget()
+{
+
+    // Next, pick lowest HP enemy in reasonable range
+    int i;
+    object oBest = OBJECT_INVALID;
+    int nBestHP = 99999;
+
+    for (i = 1; i <= 7; i = i + 1)
+    {
+        object oE = T3_GetEnemyByIndex(i);
+        if (!GetIsObjectValid(oE) || GetIsDead(oE))
+            continue;
+
+        if (!IsWizard())
+        {
+            if (GetDistanceBetween(OBJECT_SELF, oE) > 10.0)
+                continue;
+        }
+        else
+        {
+            if (GetDistanceBetween(OBJECT_SELF, oE) > 40.0)
+                continue;
+        }
+
+        int nHP = GetCurrentHitPoints(oE);
+        if (nHP < nBestHP)
+        {
+            nBestHP = nHP;
+            oBest = oE;
+        }
+    }
+
+    if (GetIsObjectValid(oBest))
+        return oBest;
+
+    // Fallback: nearest enemy
+    object oNearest = GetNearestCreature(CREATURE_TYPE_REPUTATION, REPUTATION_TYPE_ENEMY, OBJECT_SELF);
+    if (GetIsObjectValid(oNearest) && !GetIsDead(oNearest))
+        return oNearest;
+
+    return OBJECT_INVALID;
+}
+
+// Cleric - heal nearby allies if damaged
+int T3_ClericHealIfNeeded()
+{
+    if (!IsCleric())
+        return FALSE;
+
+    object oBest = OBJECT_INVALID;
+    int nWorstHealth = 5;
+
+    // Scan for nearby allies
+    object oScan = GetNearestCreature(CREATURE_TYPE_REPUTATION, REPUTATION_TYPE_FRIEND, OBJECT_SELF, 1, CREATURE_TYPE_PERCEPTION, PERCEPTION_SEEN);
+    int nIndex = 1;
+    while (GetIsObjectValid(oScan) && nIndex < 10)
+    {
+        if (SameTeam(oScan))
+        {
+            float fDist = GetDistanceBetween(OBJECT_SELF, oScan);
+            if (fDist <= 15.0)
+            {
+                int nHealth = GetHealth(oScan);
+                if (nHealth > 0 && nHealth < nWorstHealth)
+                {
+                    nWorstHealth = nHealth;
+                    oBest = oScan;
+                }
+            }
+        }
+        ++nIndex;
+        oScan = GetNearestCreature(CREATURE_TYPE_REPUTATION, REPUTATION_TYPE_FRIEND, OBJECT_SELF, nIndex, CREATURE_TYPE_PERCEPTION, PERCEPTION_SEEN);
+    }
+
+    if (!GetIsObjectValid(oBest))
+        return FALSE;
+
+    // Choose best available heal spell
+    int nSpell = -1;
+    if (GetHasSpell(SPELL_HEAL))
+        nSpell = SPELL_HEAL;
+    else if (GetHasSpell(SPELL_CURE_CRITICAL_WOUNDS))
+        nSpell = SPELL_CURE_CRITICAL_WOUNDS;
+    else if (GetHasSpell(SPELL_CURE_SERIOUS_WOUNDS))
+        nSpell = SPELL_CURE_SERIOUS_WOUNDS;
+    else if (GetHasSpell(SPELL_CURE_MODERATE_WOUNDS))
+        nSpell = SPELL_CURE_MODERATE_WOUNDS;
+    else if (GetHasSpell(SPELL_CURE_LIGHT_WOUNDS))
+        nSpell = SPELL_CURE_LIGHT_WOUNDS;
+
+    if (nSpell == -1)
+        return FALSE;
+
+    ClearAllActions();
+    ActionCastSpellAtObject(nSpell, oBest, METAMAGIC_ANY, TRUE, 0, PROJECTILE_PATH_TYPE_DEFAULT, TRUE);
+    T3_DeclareAction("Healing ally " + GetTag(oBest));
+    return TRUE;
+}
+
+// Wizard - use Magic Missile for low HP targets, big spells otherwise
+int T3_WizardOffense(object oEnemy)
+{
+    if (!IsWizard() || !GetIsObjectValid(oEnemy))
+        return FALSE;
+
+    // Check if enemy HP is below 20% - if so, use Magic Missile to finish them off
+    int nCurrentHP = GetCurrentHitPoints(oEnemy);
+    int nMaxHP = GetMaxHitPoints(oEnemy);
+    float fHPRatio = 0.0;
+
+    if (nMaxHP > 0)
+        fHPRatio = IntToFloat(nCurrentHP) / IntToFloat(nMaxHP);
+
+    int nSpell = -1;
+
+    // If enemy is below 20% HP, use Magic Missile (guaranteed hit, don't waste big spells)
+    if (fHPRatio < 0.20 && GetHasSpell(SPELL_MAGIC_MISSILE))
+    {
+        nSpell = SPELL_MAGIC_MISSILE;
+        ClearAllActions();
+        ActionCastSpellAtObject(nSpell,oEnemy, METAMAGIC_ANY, TRUE, 0, PROJECTILE_PATH_TYPE_DEFAULT, TRUE);
+        T3_DeclareAction("Finishing off low HP enemy with Magic Missile: " + GetTag(oEnemy));
+        return TRUE;
+    }
+
+    float fDistToEnemy = GetDistanceBetween(OBJECT_SELF, oEnemy);
+
+    // Use this order of spells within 17 meters (some space to account for walking out of range)
+    if (fDistToEnemy <= 17.0)
+    {
+        if (GetHasSpell(SPELL_FLAME_ARROW))
+            nSpell = SPELL_FLAME_ARROW;
+        else if (GetHasSpell(SPELL_LIGHTNING_BOLT))
+            nSpell = SPELL_LIGHTNING_BOLT;
+        else if (GetHasSpell(SPELL_MELFS_ACID_ARROW))
+            nSpell = SPELL_MELFS_ACID_ARROW;
+        else if (GetHasSpell(SPELL_MAGIC_MISSILE))
+            nSpell = SPELL_MAGIC_MISSILE;
+    }
+    // Use this order of spells within 35 meters (some space to account for walking out of range)
+    else if (fDistToEnemy <= 35.0)
+    {
+        if (GetHasSpell(SPELL_LIGHTNING_BOLT))
+            nSpell = SPELL_LIGHTNING_BOLT;
+        else if (GetHasSpell(SPELL_MELFS_ACID_ARROW))
+            nSpell = SPELL_MELFS_ACID_ARROW;
+        else if (GetHasSpell(SPELL_MAGIC_MISSILE))
+            nSpell = SPELL_MAGIC_MISSILE;
+    }
+
+    if (nSpell == -1)
+        return FALSE; // fall back to default AI
+
+    ClearAllActions();
+    ActionCastSpellAtObject(nSpell, oEnemy, METAMAGIC_ANY, TRUE, 0, PROJECTILE_PATH_TYPE_DEFAULT, TRUE);
+    T3_DeclareAction("Casting spell at " + GetTag(oEnemy));
+    return TRUE;
+}
+
+// Fighters: prefer melee on focus target
+int T3_FighterOffense(object oEnemy)
+{
+    if (!IsFighter() || !GetIsObjectValid(oEnemy))
+        return FALSE;
+
+    ClearAllActions();
+    ActionEquipMostDamagingMelee();
+    ActionAttack(oEnemy);
+    T3_DeclareAction("Attacking " + GetTag(oEnemy) + " in melee");
+    return TRUE;
+}
+
+// All: simple self-heal outside combat using spells if available
+void T3_OutOfCombatSelfHeal()
+{
+    if (GetIsInCombat())
+        return;
+
+    int nHealth = GetHealth();
+    if (nHealth >= 4) // only if injured more than slightly
+        return;
+
+    int nSpell = -1;
+    if (IsCleric())
+    {
+        if (GetHasSpell(SPELL_HEAL))
+            nSpell = SPELL_HEAL;
+        else if (GetHasSpell(SPELL_CURE_CRITICAL_WOUNDS))
+            nSpell = SPELL_CURE_CRITICAL_WOUNDS;
+        else if (GetHasSpell(SPELL_CURE_SERIOUS_WOUNDS))
+            nSpell = SPELL_CURE_SERIOUS_WOUNDS;
+        else if (GetHasSpell(SPELL_CURE_MODERATE_WOUNDS))
+            nSpell = SPELL_CURE_MODERATE_WOUNDS;
+        else if (GetHasSpell(SPELL_CURE_LIGHT_WOUNDS))
+            nSpell = SPELL_CURE_LIGHT_WOUNDS;
+    }
+
+    if (nSpell == -1)
+        return;
+
+    ClearAllActions();
+    ActionCastSpellAtObject(nSpell, OBJECT_SELF, METAMAGIC_ANY, TRUE, 0, PROJECTILE_PATH_TYPE_DEFAULT, TRUE);
+    T3_DeclareAction("Self-healing out of combat");
+}
 
 
 // ---------------------------- Standard functions -------------------------------
 // Called every combat round
-void T3_DetermineCombatRound( object oIntruder = OBJECT_INVALID, int nAI_Difficulty = 10 )
+void T3_DetermineCombatRound(object oIntruder = OBJECT_INVALID, int nAI_Difficulty = 10)
 {
-    DetermineCombatRound( oIntruder, nAI_Difficulty );
+    // Get targets using GetFocusTarget
+    object oEnemy = T3_GetFocusTarget();
+    if (!GetIsObjectValid(oEnemy))
+    {
+        // No special logic possible, fall back to default AI
+        DetermineCombatRound(oIntruder, nAI_Difficulty);
+        return;
+    }
+    // Role-specific combat
+    if (IsWizard())
+    {
+        if (T3_WizardOffense(oEnemy))
+            return;
+    }
+    else if (IsCleric())
+    {
+        // Try to heal allies first
+        if (T3_ClericHealIfNeeded())
+            return;
+
+        // Otherwise behave roughly like a fighter
+        if (T3_FighterOffense(oEnemy))
+            return;
+    }
+    else if (IsFighter())
+    {
+        if (T3_FighterOffense(oEnemy))
+            return;
+    }
+
+    // Fallback to default Bioware AI if nothing else triggered
+    DetermineCombatRound(oIntruder, nAI_Difficulty);
 }
 
 // Called every heartbeat (i.e., every six seconds).
@@ -455,6 +694,18 @@ void T3_HeartBeat()
     //T3_UpdateEnemyObjects();
     //T3_MasterUpdateHuntTarget();       // hunt the lone (priority)
     T3_MasterUpdateStrikeTarget();     // strike target
+
+    // The wizard checks for enemies within 30 to start using its spells
+    if (!GetIsInCombat() && IsWizard())
+    {
+        object oEnemy = T3_GetFocusTarget();
+        if (GetIsObjectValid(oEnemy) && GetDistanceBetween(OBJECT_SELF, oEnemy) <= 30.0)
+        {
+            T3_DeclareAction("Enemy within 40m - initiating WizardOffense on " + GetTag(oEnemy));
+            T3_WizardOffense(oEnemy);
+            return;
+        }
+    }
 
     if (GetIsInCombat())
     {
@@ -499,7 +750,7 @@ void T3_Spawn()
     {
         sTarget = WpClosestAltarRight();
     }
-    SetLocalString(OBJECT_SELF, "TARGET", sTarget);
+        SetLocalString(OBJECT_SELF, "TARGET", sTarget);
 }
 
 

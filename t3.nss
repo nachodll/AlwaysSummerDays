@@ -523,22 +523,20 @@ int T3_ClericHealIfNeeded()
 
     // Choose best available heal spell
     int nSpell = -1;
-    if (GetHasSpell(SPELL_HEAL))
-        nSpell = SPELL_HEAL;
-    else if (GetHasSpell(SPELL_CURE_CRITICAL_WOUNDS))
+    if (GetHasSpell(SPELL_CURE_CRITICAL_WOUNDS) > 0)
         nSpell = SPELL_CURE_CRITICAL_WOUNDS;
-    else if (GetHasSpell(SPELL_CURE_SERIOUS_WOUNDS))
+    else if (GetHasSpell(SPELL_CURE_SERIOUS_WOUNDS) > 0)
         nSpell = SPELL_CURE_SERIOUS_WOUNDS;
-    else if (GetHasSpell(SPELL_CURE_MODERATE_WOUNDS))
+    else if (GetHasSpell(SPELL_CURE_MODERATE_WOUNDS) > 0)
         nSpell = SPELL_CURE_MODERATE_WOUNDS;
-    else if (GetHasSpell(SPELL_CURE_LIGHT_WOUNDS))
+    else if (GetHasSpell(SPELL_CURE_LIGHT_WOUNDS) > 0)
         nSpell = SPELL_CURE_LIGHT_WOUNDS;
 
     if (nSpell == -1)
         return FALSE;
 
     ClearAllActions();
-    ActionCastSpellAtObject(nSpell, oBest, METAMAGIC_ANY, TRUE, 0, PROJECTILE_PATH_TYPE_DEFAULT, TRUE);
+    ActionCastSpellAtObject(nSpell, oBest, METAMAGIC_ANY, FALSE, 0, PROJECTILE_PATH_TYPE_DEFAULT, FALSE);
     T3_DeclareAction("Healing ally " + GetTag(oBest));
     return TRUE;
 }
@@ -560,11 +558,11 @@ int T3_WizardOffense(object oEnemy)
     int nSpell = -1;
 
     // If enemy is below 20% HP, use Magic Missile (guaranteed hit, don't waste big spells)
-    if (fHPRatio < 0.20 && GetHasSpell(SPELL_MAGIC_MISSILE))
+    if (fHPRatio < 0.20 && GetHasSpell(SPELL_MAGIC_MISSILE) > 0)
     {
         nSpell = SPELL_MAGIC_MISSILE;
         ClearAllActions();
-        ActionCastSpellAtObject(nSpell,oEnemy, METAMAGIC_ANY, TRUE, 0, PROJECTILE_PATH_TYPE_DEFAULT, TRUE);
+        ActionCastSpellAtObject(nSpell, oEnemy, METAMAGIC_ANY, FALSE, 0, PROJECTILE_PATH_TYPE_DEFAULT, FALSE);
         T3_DeclareAction("Finishing off low HP enemy with Magic Missile: " + GetTag(oEnemy));
         return TRUE;
     }
@@ -574,23 +572,23 @@ int T3_WizardOffense(object oEnemy)
     // Use this order of spells within 17 meters (some space to account for walking out of range)
     if (fDistToEnemy <= 17.0)
     {
-        if (GetHasSpell(SPELL_FLAME_ARROW))
+        if (GetHasSpell(SPELL_FLAME_ARROW) > 0)
             nSpell = SPELL_FLAME_ARROW;
-        else if (GetHasSpell(SPELL_LIGHTNING_BOLT))
+        else if (GetHasSpell(SPELL_LIGHTNING_BOLT) > 0)
             nSpell = SPELL_LIGHTNING_BOLT;
-        else if (GetHasSpell(SPELL_MELFS_ACID_ARROW))
+        else if (GetHasSpell(SPELL_MELFS_ACID_ARROW) > 0)
             nSpell = SPELL_MELFS_ACID_ARROW;
-        else if (GetHasSpell(SPELL_MAGIC_MISSILE))
+        else if (GetHasSpell(SPELL_MAGIC_MISSILE) > 0)
             nSpell = SPELL_MAGIC_MISSILE;
     }
     // Use this order of spells within 35 meters (some space to account for walking out of range)
     else if (fDistToEnemy <= 35.0)
     {
-        if (GetHasSpell(SPELL_LIGHTNING_BOLT))
-            nSpell = SPELL_LIGHTNING_BOLT;
-        else if (GetHasSpell(SPELL_MELFS_ACID_ARROW))
+        if (GetHasSpell(SPELL_FLAME_ARROW) > 0)
+            nSpell = SPELL_FLAME_ARROW;
+        else if (GetHasSpell(SPELL_MELFS_ACID_ARROW) > 0)
             nSpell = SPELL_MELFS_ACID_ARROW;
-        else if (GetHasSpell(SPELL_MAGIC_MISSILE))
+        else if (GetHasSpell(SPELL_MAGIC_MISSILE) > 0)
             nSpell = SPELL_MAGIC_MISSILE;
     }
 
@@ -598,7 +596,7 @@ int T3_WizardOffense(object oEnemy)
         return FALSE; // fall back to default AI
 
     ClearAllActions();
-    ActionCastSpellAtObject(nSpell, oEnemy, METAMAGIC_ANY, TRUE, 0, PROJECTILE_PATH_TYPE_DEFAULT, TRUE);
+    ActionCastSpellAtObject(nSpell, oEnemy, METAMAGIC_ANY, FALSE, 0, PROJECTILE_PATH_TYPE_DEFAULT, FALSE);
     T3_DeclareAction("Casting spell at " + GetTag(oEnemy));
     return TRUE;
 }
@@ -629,15 +627,13 @@ void T3_OutOfCombatSelfHeal()
     int nSpell = -1;
     if (IsCleric())
     {
-        if (GetHasSpell(SPELL_HEAL))
-            nSpell = SPELL_HEAL;
-        else if (GetHasSpell(SPELL_CURE_CRITICAL_WOUNDS))
+        if (GetHasSpell(SPELL_CURE_CRITICAL_WOUNDS) > 0)
             nSpell = SPELL_CURE_CRITICAL_WOUNDS;
-        else if (GetHasSpell(SPELL_CURE_SERIOUS_WOUNDS))
+        else if (GetHasSpell(SPELL_CURE_SERIOUS_WOUNDS) > 0)
             nSpell = SPELL_CURE_SERIOUS_WOUNDS;
-        else if (GetHasSpell(SPELL_CURE_MODERATE_WOUNDS))
+        else if (GetHasSpell(SPELL_CURE_MODERATE_WOUNDS) > 0)
             nSpell = SPELL_CURE_MODERATE_WOUNDS;
-        else if (GetHasSpell(SPELL_CURE_LIGHT_WOUNDS))
+        else if (GetHasSpell(SPELL_CURE_LIGHT_WOUNDS) > 0)
             nSpell = SPELL_CURE_LIGHT_WOUNDS;
     }
 
@@ -645,7 +641,7 @@ void T3_OutOfCombatSelfHeal()
         return;
 
     ClearAllActions();
-    ActionCastSpellAtObject(nSpell, OBJECT_SELF, METAMAGIC_ANY, TRUE, 0, PROJECTILE_PATH_TYPE_DEFAULT, TRUE);
+    ActionCastSpellAtObject(nSpell, OBJECT_SELF, METAMAGIC_ANY, FALSE, 0, PROJECTILE_PATH_TYPE_DEFAULT, FALSE);
     T3_DeclareAction("Self-healing out of combat");
 }
 

@@ -174,7 +174,7 @@ void T3_ClaimNearbyUnclaimedAltars()
     float fDistToUnclaimed = GetDistanceBetween(OBJECT_SELF, oUnclaimed);
     
     // If we're close to the unclaimed altar, claim it and become its guard
-    if (fDistToUnclaimed <= 16)
+    if (fDistToUnclaimed <= 16.0)
     {
         if (ClaimerOf(sUnclaimed) == MyColor())
         {

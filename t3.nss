@@ -176,20 +176,20 @@ void T3_ClaimNearbyUnclaimedAltars()
     // If we're at the unclaimed altar, claim it and become its guard
     if (fDistToUnclaimed <= 3.5)
     {
-        // Altar is now ours - become its guardian
-        object oBrazier = GetObjectByTag("BRAZIER");
-        if (GetIsObjectValid(oBrazier))
-        {
-            string sGuard = GetLocalString(oBrazier, "ASD_GUARD_" + sUnclaimed);
-            if (sGuard == "")
+            // Altar is now ours - become its guardian
+            object oBrazier = GetObjectByTag("BRAZIER");
+            if (GetIsObjectValid(oBrazier))
             {
-                string sMyTag = GetTag(OBJECT_SELF);
-                SetLocalString(oBrazier, "ASD_GUARD_" + sUnclaimed, sMyTag);
-                SetLocalString(OBJECT_SELF, "GUARDING_ALTAR", sUnclaimed);
-                SetLocalString(OBJECT_SELF, "TARGET", sUnclaimed);
-                T3_DeclareAction("Claimed and guarding " + sUnclaimed);
+                string sGuard = GetLocalString(oBrazier, "ASD_GUARD_" + sUnclaimed);
+                if (sGuard == "")
+                {
+                    string sMyTag = GetTag(OBJECT_SELF);
+                    SetLocalString(oBrazier, "ASD_GUARD_" + sUnclaimed, sMyTag);
+                    SetLocalString(OBJECT_SELF, "GUARDING_ALTAR", sUnclaimed);
+                    SetLocalString(OBJECT_SELF, "TARGET", sUnclaimed);
+                    T3_DeclareAction("Claimed and guarding " + sUnclaimed);
+                }
             }
-        }
         
     }
     // If there's an unclaimed altar within reasonable range, go to it
@@ -620,37 +620,6 @@ int T3_FighterOffense(object oEnemy)
     return TRUE;
 }
 
-// All: simple self-heal outside combat using spells if available
-void T3_OutOfCombatSelfHeal()
-{
-    if (GetIsInCombat())
-        return;
-
-    int nHealth = GetHealth();
-    if (nHealth >= 4) // only if injured more than slightly
-        return;
-
-    int nSpell = -1;
-    if (IsCleric())
-    {
-        if (GetHasSpell(SPELL_CURE_CRITICAL_WOUNDS) > 0)
-            nSpell = SPELL_CURE_CRITICAL_WOUNDS;
-        else if (GetHasSpell(SPELL_CURE_SERIOUS_WOUNDS) > 0)
-            nSpell = SPELL_CURE_SERIOUS_WOUNDS;
-        else if (GetHasSpell(SPELL_CURE_MODERATE_WOUNDS) > 0)
-            nSpell = SPELL_CURE_MODERATE_WOUNDS;
-        else if (GetHasSpell(SPELL_CURE_LIGHT_WOUNDS) > 0)
-            nSpell = SPELL_CURE_LIGHT_WOUNDS;
-    }
-
-    if (nSpell == -1)
-        return;
-
-    ClearAllActions();
-    ActionCastSpellAtObject(nSpell, OBJECT_SELF, METAMAGIC_ANY, FALSE, 0, PROJECTILE_PATH_TYPE_DEFAULT, FALSE);
-    T3_DeclareAction("Self-healing out of combat");
-}
-
 
 // ---------------------------- Standard functions -------------------------------
 // Called every combat round
@@ -695,18 +664,6 @@ void T3_HeartBeat()
 {
     T3_MasterUpdateHuntTarget();       // hunt the lone (priority)
     T3_MasterUpdateStrikeTarget();     // strike target
-
-    // The wizard checks for enemies within 30 to start using its spells
-    if (!GetIsInCombat() && IsWizard())
-    {
-        object oEnemy = T3_GetFocusTarget();
-        if (GetIsObjectValid(oEnemy) && GetDistanceBetween(OBJECT_SELF, oEnemy) <= 30.0)
-        {
-            T3_DeclareAction("Enemy within 40m - initiating WizardOffense on " + GetTag(oEnemy));
-            T3_WizardOffense(oEnemy);
-            return;
-        }
-    }
 
     if (GetIsInCombat())
     {

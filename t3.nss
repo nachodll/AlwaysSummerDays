@@ -3,7 +3,7 @@
 
 // ---------------------------- Debug functions -------------------------------
 // Declare action together with their current role
-void T3_DeclareAction(string sAction)
+void //T3_DeclareAction(string sAction)
 {
     string sRole = "Unknown";
     if (IsMaster())        sRole = "Master";
@@ -144,7 +144,7 @@ void T3_MasterUpdateStrikeTarget()
         if (sNew != "")
         {
             SetLocalString(oBrazier, "ASD_STRIKE_TARGET", sNew);
-            T3_DeclareAction("Strike target set to " + sNew);
+            //T3_DeclareAction("Strike target set to " + sNew);
         }
     }
 }
@@ -187,7 +187,7 @@ void T3_ClaimNearbyUnclaimedAltars()
                     SetLocalString(oBrazier, "ASD_GUARD_" + sUnclaimed, sMyTag);
                     SetLocalString(OBJECT_SELF, "GUARDING_ALTAR", sUnclaimed);
                     SetLocalString(OBJECT_SELF, "TARGET", sUnclaimed);
-                    T3_DeclareAction("Claimed and guarding " + sUnclaimed);
+                    //T3_DeclareAction("Claimed and guarding " + sUnclaimed);
                 }
             }
         
@@ -199,7 +199,7 @@ void T3_ClaimNearbyUnclaimedAltars()
         if (sCurrent != sUnclaimed)
         {
             SetLocalString(OBJECT_SELF, "TARGET", sUnclaimed);
-            T3_DeclareAction("Targeting unclaimed altar " + sUnclaimed);
+            //T3_DeclareAction("Targeting unclaimed altar " + sUnclaimed);
         }
     }
 }
@@ -232,7 +232,7 @@ void T3_JoinStrikeAttack()
             if (sCur != sGuarding)
             {
                 SetLocalString(OBJECT_SELF, "TARGET", sGuarding);
-                T3_DeclareAction("Holding " + sGuarding);
+                //T3_DeclareAction("Holding " + sGuarding);
             }
             return;
         }
@@ -265,7 +265,7 @@ void T3_JoinStrikeAttack()
             SetLocalString(oBrazier, "ASD_GUARD_" + sStrike, sMyTag);
             SetLocalString(OBJECT_SELF, "GUARDING_ALTAR", sStrike);
             SetLocalString(OBJECT_SELF, "TARGET", sStrike);
-            T3_DeclareAction("Assigned to guard " + sStrike);
+            //T3_DeclareAction("Assigned to guard " + sStrike);
             return;
         }
 
@@ -273,7 +273,7 @@ void T3_JoinStrikeAttack()
         string sGuardTag = GetLocalString(oBrazier, "ASD_GUARD_" + sStrike);
         if (sGuardTag != "" && GetTag(OBJECT_SELF) != sGuardTag)
         {
-            T3_DeclareAction("Waiting for master to re target");
+            //T3_DeclareAction("Waiting for master to re target");
             return;
         }
     }
@@ -283,7 +283,7 @@ void T3_JoinStrikeAttack()
     if (sCurrent != sStrike)
     {
         SetLocalString(OBJECT_SELF, "TARGET", sStrike);
-        T3_DeclareAction("Joining STRIKE on " + sStrike);
+        //T3_DeclareAction("Joining STRIKE on " + sStrike);
     }
 
 }
@@ -397,7 +397,7 @@ void T3_MasterUpdateHuntTarget()
         if (!GetIsObjectValid(oCurrentTarget) || GetIsDead(oCurrentTarget))
         {
             DeleteLocalString(oBrazier, "ASD_HUNT_TARGET");
-            T3_DeclareAction("Hunt target died - clearing");
+            //T3_DeclareAction("Hunt target died - clearing");
             sCurrentHunt = "";
         }
     }
@@ -413,7 +413,7 @@ void T3_MasterUpdateHuntTarget()
         SetLocalString(oBrazier, "ASD_HUNT_TARGET", sTag);
         SetLocalString(OBJECT_SELF, "TARGET", sTag);
 
-        T3_DeclareAction("HUNT: isolated enemy " + sTag);
+        //T3_DeclareAction("HUNT: isolated enemy " + sTag);
     }
 }
 
@@ -442,7 +442,7 @@ void T3_JoinHuntIfAvailable()
     if (sCurrent != sHunt)
     {
         SetLocalString(OBJECT_SELF, "TARGET", sHunt);
-        T3_DeclareAction("Joining hunt on " + sHunt);
+        //T3_DeclareAction("Joining hunt on " + sHunt);
     }
 }
 
@@ -543,7 +543,7 @@ int T3_ClericHealIfNeeded()
 
     ClearAllActions();
     ActionCastSpellAtObject(nSpell, oBest, METAMAGIC_ANY, FALSE, 0, PROJECTILE_PATH_TYPE_DEFAULT, FALSE);
-    T3_DeclareAction("Healing ally " + GetTag(oBest));
+    //T3_DeclareAction("Healing ally " + GetTag(oBest));
     return TRUE;
 }
 
@@ -569,7 +569,7 @@ int T3_WizardOffense(object oEnemy)
         nSpell = SPELL_MAGIC_MISSILE;
         ClearAllActions();
         ActionCastSpellAtObject(nSpell, oEnemy, METAMAGIC_ANY, FALSE, 0, PROJECTILE_PATH_TYPE_DEFAULT, FALSE);
-        T3_DeclareAction("Finishing off low HP enemy with Magic Missile: " + GetTag(oEnemy));
+        //T3_DeclareAction("Finishing off low HP enemy with Magic Missile: " + GetTag(oEnemy));
         return TRUE;
     }
 
@@ -603,7 +603,7 @@ int T3_WizardOffense(object oEnemy)
 
     ClearAllActions();
     ActionCastSpellAtObject(nSpell, oEnemy, METAMAGIC_ANY, FALSE, 0, PROJECTILE_PATH_TYPE_DEFAULT, FALSE);
-    T3_DeclareAction("Casting spell at " + GetTag(oEnemy));
+    //T3_DeclareAction("Casting spell at " + GetTag(oEnemy));
     return TRUE;
 }
 
@@ -616,7 +616,7 @@ int T3_FighterOffense(object oEnemy)
     ClearAllActions();
     ActionEquipMostDamagingMelee();
     ActionAttack(oEnemy);
-    T3_DeclareAction("Attacking " + GetTag(oEnemy) + " in melee");
+    //T3_DeclareAction("Attacking " + GetTag(oEnemy) + " in melee");
     return TRUE;
 }
 
